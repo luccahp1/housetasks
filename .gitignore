@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+
+# the database is yours, not the repo's
+*.db
+*.db-wal
+*.db-shm
+
+venv/
+.venv/
+.env
+.pytest_cache/
+.idea/
+.vscode/

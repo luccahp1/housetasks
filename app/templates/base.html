@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="{{ 'pt-BR' if lang == 'pt' else 'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}{{ t('app_name') }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ css_v }}">
+</head>
+<body>
+  {% from "_icons.html" import icon, logo %}
+  <header class="topnav">
+    <a class="brand" href="/">{{ logo() }}<span>{{ t('app_name') }}</span></a>
+    <a class="lang" href="/lang/{{ 'pt' if lang == 'en' else 'en' }}">
+      {{ icon('globe', 16) }}{{ 'Português' if lang == 'en' else 'English' }}</a>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

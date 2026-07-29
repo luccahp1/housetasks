@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% block title %}{{ t('tsk_title') }} — {{ t('app_name') }}{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+{# One row of the list. #}
+{% macro task_row(task) %}
+<li class="task prio-{{ task.priority }}" data-id="{{ task.id }}"
+    data-title="{{ task.title }}" data-assignee="{{ task.assignee }}"
+    data-due="{{ task.due or '' }}" data-priority="{{ task.priority }}"
+    data-repeat="{{ task.repeat_rule }}">
+  <form method="post" action="/{{ task.id }}/done" class="tick-form">
+    <button class="tick" type="submit" aria-label="{{ t('t_save') }}: {{ task.title }}">
+      {{ icon('check', 15) }}
+    </button>
+  </form>
+  <div class="task-body">
+    <span class="task-title">{{ task.title }}</span>
+    <span class="task-meta">
+      {% if task.assignee %}
+        <span class="who" style="--who: {{ task.hue }}" title="{{ task.assignee }}">
+          <span class="who-dot">{{ task.initials }}</span>{{ task.assignee }}</span>
+      {% endif %}
+      {% if task.when_key %}
+        <span class="due {{ 'late' if task.bucket == 'overdue' }}">
+          {{ t(task.when_key) | replace('%n', task.when_n | default('')) }}</span>
+      {% elif task.bucket == 'week' %}
+        <span class="due">{{ weekday(task.due) }}</span>
+      {% elif task.due %}
+        <span class="due">{{ fmt_date(task.due) }}</span>
+      {% endif %}
+      {% if task.repeat_key %}
+        <span class="rep">{{ icon('repeat', 12) }}
+          {{ t(task.repeat_key) | replace('%n', task.repeat_n) }}</span>
+      {% endif %}
+    </span>
+  </div>
+  <button class="dots task-edit" type="button"
+          aria-label="{{ t('t_edit') }}: {{ task.title }}">{{ icon('dots', 18) }}</button>
+</li>
+{% endmacro %}
+
+<div class="topbar">
+  <div>
+    <h1>{{ t('tsk_title') }}</h1>
+    <p class="sub">{{ t('tsk_sub') }}</p>
+  </div>
+  <div class="top-actions">
+    <button class="btn ghost" onclick="window.print()">{{ icon('printer') }} {{ t('print') }}</button>
+  </div>
+</div>
+
+{# ---------- the hero: one glance answers "how's today going" ---------- #}
+<section class="card hero-tasks" id="hero">
+  <div class="ring-wrap">
+    <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+      <defs>
+        <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#6172f3"/>
+          <stop offset="55%" stop-color="#8b97ff"/>
+          <stop offset="100%" stop-color="#3fd68c"/>
+        </linearGradient>
+      </defs>
+      <circle class="ring-track" cx="60" cy="60" r="52"/>
+      <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52"
+              stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+    </svg>
+    <div class="ring-label">
+      {% if summary.today_total %}
+        <div class="ring-num" id="ring-num">{{ summary.done_today }}<span>/{{ summary.today_total }}</span></div>
+        <div class="ring-cap">{{ t('t_of_today') }}</div>
+      {% else %}
+        <div class="ring-check">{{ icon('check', 30) }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="hero-copy">
+    <h2 class="hero-head" id="hero-head">{{ summary.headline }}</h2>
+    <p class="hero-sub" id="hero-sub">{{ summary.sub }}</p>
+    <div class="hero-chips" id="hero-chips">
+      {% if summary.streak %}
+        <span class="stat-chip flame">{{ icon('flame', 14) }}
+          {{ (t('t_streak_one') if summary.streak == 1 else t('t_streak'))
+             | replace('%n', summary.streak) }}</span>
+      {% endif %}
+      {% if summary.week_done %}
+        <span class="stat-chip">{{ icon('check', 14) }}
+          {{ t('t_week_done') | replace('%n', summary.week_done) }}</span>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{# ---------- quick add: one line, parsed on the server as you type ---------- #}
+<section class="card quick-add">
+  <form method="post" action="/add" id="qa-form">
+    <div class="qa-row">
+      <span class="qa-icon">{{ icon('sparkle', 18) }}</span>
+      <input type="text" name="text" id="qa-input" autocomplete="off"
+             placeholder="{{ t('t_add_ph') }}" aria-label="{{ t('add') }}" required>
+      <button class="btn" type="submit">{{ icon('plus') }} {{ t('add') }}</button>
+    </div>
+  </form>
+  <div class="qa-preview" id="qa-preview" hidden>
+    <span class="hint">{{ t('t_reads_as') }}</span>
+    <span class="qa-chips" id="qa-chips"></span>
+  </div>
+  <p class="hint qa-help">{{ t('t_add_help') }}</p>
+</section>
+
+{% if people %}
+<div class="who-filter">
+  <a class="chip {{ 'on' if not who }}" href="/">{{ icon('users', 13) }} {{ t('everyone') }}</a>
+  {% for person in people %}
+    <a class="chip {{ 'on' if who == person.name }}" style="--who: {{ person.hue }}"
+       href="/?who={{ person.name | urlencode }}">
+      <span class="who-dot">{{ person.initials }}</span>{{ person.name }}
+      <span class="chip-n">{{ person.n }}</span></a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<section class="task-board" id="board">
+  {% for group in board %}
+  <div class="task-group" data-bucket="{{ group.key }}">
+    <div class="group-head {{ 'late' if group.key == 'overdue' }}">
+      {{ t('t_b_' ~ group.key) }}<span class="group-n">{{ group.tasks | length }}</span>
+    </div>
+    <ul class="task-list">
+      {% for task in group.tasks %}{{ task_row(task) }}{% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <div class="card empty-tasks">
+    <div class="big-icon">{{ icon('tasks', 26) }}</div>
+    <p>{% if who %}{{ t('t_empty_person') | replace('%n', who) }}{% else %}{{ t('t_empty') }}{% endif %}</p>
+  </div>
+  {% endfor %}
+</section>
+
+{% if done_today %}
+<section class="card done-card">
+  <div class="panel-top">
+    <div class="panel-head">{{ t('done_today') }} <span class="group-n">{{ done_today | length }}</span></div>
+  </div>
+  <ul class="task-list done-list">
+    {% for entry in done_today %}
+    <li class="task done">
+      <form method="post" action="/log/{{ entry.id }}/undo">
+        <button class="tick on" type="submit" aria-label="{{ t('undo') }}: {{ entry.title }}">
+          {{ icon('check', 15) }}</button>
+      </form>
+      <div class="task-body">
+        <span class="task-title">{{ entry.title }}</span>
+        <span class="task-meta">
+          {% if entry.assignee %}<span class="who-plain">{{ entry.assignee }}</span>{% endif %}
+          <span class="due">{{ entry.done_at[11:16] }}</span>
+        </span>
+      </div>
+      <form method="post" action="/log/{{ entry.id }}/undo">
+        <button class="dots" type="submit" aria-label="{{ t('undo') }}">{{ icon('undo', 17) }}</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{# ---------- edit dialog ---------- #}
+<dialog id="task-dialog">
+  <form method="post" id="task-form">
+    <div class="dlg-head">
+      <div class="icon-chip">{{ icon('tasks') }}</div>
+      <div class="panel-head">{{ t('t_edit') }}</div>
+    </div>
+
+    <label class="dlg-label" for="ed-title">{{ t('t_what') }}</label>
+    <input type="text" name="title" id="ed-title" autocomplete="off" required>
+
+    <div class="ed-grid">
+      <div>
+        <label class="dlg-label" for="ed-who">{{ t('t_who') }}</label>
+        <input type="text" name="assignee" id="ed-who" list="ed-people"
+               placeholder="{{ t('t_who_ph') }}" autocomplete="off">
+        <datalist id="ed-people">
+          {% for person in people %}<option value="{{ person.name }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="dlg-label" for="ed-due">{{ t('t_when') }}</label>
+        <input type="date" name="due" id="ed-due">
+      </div>
+      <div>
+        <label class="dlg-label" for="ed-priority">{{ t('t_priority') }}</label>
+        <select name="priority" id="ed-priority">
+          <option value="low">{{ t('t_p_low') }}</option>
+          <option value="normal">{{ t('t_p_normal') }}</option>
+          <option value="high">{{ t('t_p_high') }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="dlg-label" for="ed-repeat">{{ t('t_repeats') }}</label>
+        <select name="repeat_rule" id="ed-repeat">
+          <option value="">{{ t('t_never') }}</option>
+          <option value="daily">{{ t('t_rep_daily') }}</option>
+          <option value="weekdays">{{ t('t_rep_weekdays') }}</option>
+          <option value="weekly">{{ t('t_rep_weekly') }}</option>
+          <option value="biweekly">{{ t('t_rep_biweekly') }}</option>
+          <option value="monthly">{{ t('t_rep_monthly') }}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="dlg-actions">
+      <button class="btn danger" type="button" id="ed-delete">{{ icon('trash') }} {{ t('delete') }}</button>
+      <span style="flex:1"></span>
+      <button class="btn ghost" type="button" id="ed-cancel">{{ t('cancel') }}</button>
+      <button class="btn" type="submit">{{ icon('check') }} {{ t('t_save') }}</button>
+    </div>
+  </form>
+</dialog>
+<form method="post" id="delete-form"></form>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  const RING = 2 * Math.PI * 52;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const ring = document.getElementById("ring-fill");
+  const board = document.getElementById("board");
+
+  // ---------- progress ring ----------
+  function drawRing(value) {
+    ring.style.strokeDashoffset = String(RING * (1 - value / 100));
+  }
+  // The circle is drawn empty, then transitions to the real figure a moment
+  // later. Deliberately a timer and not requestAnimationFrame: a tab that isn't
+  // on screen produces no frames, and the ring would stay stuck on empty.
+  setTimeout(() => drawRing({{ summary.pct }}), 80);
+
+  // ---------- ticking things off ----------
+  function applySummary(data) {
+    drawRing(data.pct);
+    const num = document.getElementById("ring-num");
+    if (num) num.innerHTML = data.done_today + "<span>/" + data.today_total + "</span>";
+    document.getElementById("hero-head").textContent = data.headline;
+    document.getElementById("hero-sub").textContent = data.sub;
+  }
+
+  function pruneEmpty() {
+    board.querySelectorAll(".task-group").forEach(group => {
+      const list = group.querySelector(".task-list");
+      if (!list.children.length) { group.remove(); return; }
+      group.querySelector(".group-n").textContent = list.children.length;
+    });
+  }
+
+  document.addEventListener("submit", event => {
+    const form = event.target.closest("form.tick-form");
+    if (!form) return;
+    event.preventDefault();
+    const row = form.closest(".task");
+    if (row.classList.contains("completing")) return;
+    row.classList.add("completing");
+
+    fetch(form.action, { method: "POST", headers: { "Accept": "application/json" } })
+      .then(response => response.json())
+      .then(data => {
+        applySummary(data);
+        if (data.flash) toast(data.flash);
+        setTimeout(() => {
+          row.classList.add("gone");
+          setTimeout(() => { row.remove(); pruneEmpty(); }, 300);
+        }, reduced ? 0 : 380);
+        if (data.cleared) celebrate();
+      })
+      .catch(() => form.submit());
+  });
+
+  // ---------- quick-add preview, parsed by the same code that saves ----------
+  const input = document.getElementById("qa-input");
+  const preview = document.getElementById("qa-preview");
+  const chips = document.getElementById("qa-chips");
+  let timer;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const text = input.value.trim();
+    if (text.length < 3) { preview.hidden = true; return; }
+    timer = setTimeout(() => {
+      fetch("/parse?text=" + encodeURIComponent(text))
+        .then(response => response.json())
+        .then(data => {
+          if (!data.title) { preview.hidden = true; return; }
+          chips.innerHTML = "";
+          data.chips.forEach(chip => {
+            const span = document.createElement("span");
+            span.className = "qa-chip " + chip.kind;
+            span.textContent = chip.text;
+            chips.appendChild(span);
+          });
+          preview.hidden = false;
+        })
+        .catch(() => { preview.hidden = true; });
+    }, 220);
+  });
+  document.getElementById("qa-form").addEventListener("submit", () => {
+    preview.hidden = true;
+  });
+
+  // ---------- edit dialog ----------
+  const dialog = document.getElementById("task-dialog");
+  const editForm = document.getElementById("task-form");
+  const deleteForm = document.getElementById("delete-form");
+  document.addEventListener("click", event => {
+    const button = event.target.closest(".task-edit");
+    if (!button) return;
+    const row = button.closest(".task");
+    editForm.action = "/" + row.dataset.id + "/update";
+    deleteForm.action = "/" + row.dataset.id + "/delete";
+    document.getElementById("ed-title").value = row.dataset.title;
+    document.getElementById("ed-who").value = row.dataset.assignee;
+    document.getElementById("ed-due").value = row.dataset.due;
+    document.getElementById("ed-priority").value = row.dataset.priority;
+    const repeat = document.getElementById("ed-repeat");
+    // "every:N" has no matching <option>; the dialog offers the fixed cadences.
+    repeat.value = [...repeat.options].some(o => o.value === row.dataset.repeat)
+      ? row.dataset.repeat : "";
+    dialog.showModal();
+  });
+  document.getElementById("ed-cancel").addEventListener("click", () => dialog.close());
+  document.getElementById("ed-delete").addEventListener("click", () => deleteForm.submit());
+  dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
+
+  // ---------- the payoff ----------
+  function celebrate() {
+    if (reduced) return;
+    const colors = ["#6172f3", "#3fd68c", "#e8b950", "#d55181", "#9085e9"];
+    const host = document.getElementById("hero");
+    for (let i = 0; i < 42; i++) {
+      const bit = document.createElement("i");
+      bit.className = "confetti";
+      bit.style.background = colors[i % colors.length];
+      bit.style.left = (8 + Math.random() * 84) + "%";
+      host.appendChild(bit);
+      bit.animate([
+        { transform: "translate3d(0,0,0) rotate(0deg)", opacity: 1 },
+        { transform: `translate3d(${(Math.random() - .5) * 240}px,` +
+                     ` ${150 + Math.random() * 170}px, 0)` +
+                     ` rotate(${Math.random() * 720 - 360}deg)`, opacity: 0 }
+      ], { duration: 1300 + Math.random() * 900,
+           easing: "cubic-bezier(.2,.7,.4,1)" }).onfinish = () => bit.remove();
+    }
+  }
+
+  let toastTimer;
+  function toast(message) {
+    const node = document.getElementById("toast");
+    node.textContent = message;
+    node.hidden = false;
+    requestAnimationFrame(() => node.classList.add("up"));
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      node.classList.remove("up");
+      setTimeout(() => { node.hidden = true; }, 250);
+    }, 3200);
+  }
+})();
+</script>
+{% endblock %}
