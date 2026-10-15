@@ -208,6 +208,7 @@
           <option value="weekly">{{ t('t_rep_weekly') }}</option>
           <option value="biweekly">{{ t('t_rep_biweekly') }}</option>
           <option value="monthly">{{ t('t_rep_monthly') }}</option>
+          <option value="" id="ed-repeat-custom" data-label="{{ t('t_rep_every') }}" hidden></option>
         </select>
       </div>
     </div>
@@ -324,7 +325,13 @@
     document.getElementById("ed-due").value = row.dataset.due;
     document.getElementById("ed-priority").value = row.dataset.priority;
     const repeat = document.getElementById("ed-repeat");
-    // "every:N" has no matching <option>; the dialog offers the fixed cadences.
+    // "every:N" from quick-add has no fixed <option>, so the spare one takes it
+    // on. Without it the select fell back to "never" and saving dropped the repeat.
+    const custom = document.getElementById("ed-repeat-custom");
+    const every = /^every:(\d+)$/.exec(row.dataset.repeat);
+    custom.hidden = !every;
+    custom.value = every ? row.dataset.repeat : "";
+    custom.textContent = every ? custom.dataset.label.replace("%n", every[1]) : "";
     repeat.value = [...repeat.options].some(o => o.value === row.dataset.repeat)
       ? row.dataset.repeat : "";
     dialog.showModal();

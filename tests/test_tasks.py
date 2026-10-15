@@ -171,3 +171,51 @@ def test_the_person_filter_only_shows_that_person(clean_db):
 def test_the_same_person_always_gets_the_same_colour():
     assert tasks.hue("Maria") == tasks.hue("maria")
     assert tasks.initials("ana maria") == "AM"
+
+
+# ---------- regressions (2026-10-15) ----------
+
+def test_feb_29_after_a_leap_february_lands_on_feb_28_next_year():
+    assert tasks.parse("renew licence feb 29", date(2028, 3, 1))["due"] == "2029-02-28"
+
+
+@pytest.mark.parametrize("line", ["take out 2 bags of recycling", "set 4 places at the table"])
+def test_a_month_abbreviation_that_is_a_word_is_not_a_date(line):
+    fields = tasks.parse(line, MONDAY)
+    assert fields["due"] is None
+    assert fields["title"] == line[:1].upper() + line[1:]
+
+
+def test_a_wordlike_month_still_works_at_the_end_of_the_line():
+    assert tasks.parse("vet appointment out 22", MONDAY)["due"] == "2026-10-22"
+
+
+@pytest.mark.parametrize("line", ["clean the sun room", "fix the sat dish"])
+def test_a_bare_weekday_abbreviation_that_is_a_word_is_not_a_date(line):
+    assert tasks.parse(line, MONDAY)["due"] is None
+
+
+def test_the_same_abbreviation_works_after_a_preposition():
+    assert tasks.parse("clean the sun room on sat", MONDAY)["due"] == "2026-08-01"
+
+
+def test_monthly_ticked_before_its_date_still_moves_on():
+    assert tasks.next_due(date(2026, 8, 3), "monthly", MONDAY) == date(2026, 9, 3)
+
+
+def test_weekdays_ticked_before_its_date_still_moves_on():
+    assert tasks.next_due(date(2026, 7, 31), "weekdays", MONDAY) == date(2026, 8, 3)
+
+
+def test_editing_keeps_a_custom_every_n_rule(clean_db):
+    task_id = tasks.add("feed the fish every 3 days")
+    tasks.update(task_id, "Feed the fish", "", "2026-08-01", "normal", "every:3")
+    row = clean_db.query_one("SELECT repeat_rule FROM tasks WHERE id = ?", (task_id,))
+    assert row["repeat_rule"] == "every:3"
+
+
+def test_editing_rejects_a_junk_rule(clean_db):
+    task_id = tasks.add("thing")
+    tasks.update(task_id, "Thing", "", "", "normal", "every:banana")
+    row = clean_db.query_one("SELECT repeat_rule FROM tasks WHERE id = ?", (task_id,))
+    assert row["repeat_rule"] == ""

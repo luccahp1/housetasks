@@ -47,6 +47,15 @@ _MONTHS = {
 _WEEKDAY_RE = "|".join(sorted(_WEEKDAYS, key=len, reverse=True))
 _MONTH_RE = "|".join(sorted(_MONTHS, key=len, reverse=True))
 
+# Abbreviations that are also everyday words. Standing alone they stay words
+# ("clean the sun room", "take out 2 bags"); they only count as dates with a
+# preposition in front ("on sat") or, for months, at the end of the line ("vet out 22").
+_WORDLIKE_WEEKDAYS = {"sun", "sat", "ter"}
+_WORDLIKE_MONTHS = {"out", "set"}
+_BARE_WEEKDAY_RE = "|".join(sorted(set(_WEEKDAYS) - _WORDLIKE_WEEKDAYS, key=len, reverse=True))
+_PLAIN_MONTH_RE = "|".join(sorted(set(_MONTHS) - _WORDLIKE_MONTHS, key=len, reverse=True))
+_WORDLIKE_MONTH_RE = "|".join(sorted(_WORDLIKE_MONTHS))
+
 # Longest phrasings first: "every 2 weeks" and "every other week" both contain
 # "every week", so they have to win the race.
 _REPEAT_PATTERNS = [
@@ -112,7 +121,10 @@ def _parse_due(text, today):
             return text, date.fromisoformat(match.group(1))
         except ValueError:
             return text, None
-    text, match = _cut(text, rf"\b({_MONTH_RE})\.? (\d{{1,2}})\b")   # "Aug 12"
+    text, match = _cut(text, rf"\b({_PLAIN_MONTH_RE})\.? (\d{{1,2}})\b")   # "Aug 12"
+    if not match:
+        # "out 22" only when nothing but the end of the line follows the day
+        text, match = _cut(text, rf"\b({_WORDLIKE_MONTH_RE})\.? (\d{{1,2}})\b(?!\s*[^\W\d_])")
     if match:
         return text, _calendar_date(today, _MONTHS[match.group(1).lower()],
                                     int(match.group(2)))
@@ -122,16 +134,19 @@ def _parse_due(text, today):
                                     int(match.group(1)))
     text, match = _cut(text, rf"\b(?:on|next|na|no|pr[óo]xima?) ({_WEEKDAY_RE})\b")
     if not match:
-        text, match = _cut(text, rf"\b({_WEEKDAY_RE})\b")
+        text, match = _cut(text, rf"\b({_BARE_WEEKDAY_RE})\b")
     if match:
         return text, _next_weekday(today, _WEEKDAYS[match.group(1).lower()])
     return text, None
 
 
 def _calendar_date(today, month, day):
-    day = min(day, monthrange(today.year, month)[1])
-    guess = date(today.year, month, day)
-    return guess if guess >= today else date(today.year + 1, month, day)
+    """This year's month/day, or next year's once it has passed. Clamped per
+    year, so Feb 29 typed after a leap February lands on Feb 28, not a crash."""
+    for year in (today.year, today.year + 1):
+        guess = date(year, month, min(day, monthrange(year, month)[1]))
+        if guess >= today or year > today.year:
+            return guess
 
 
 def parse(text, today=None):
@@ -183,16 +198,18 @@ def next_due(due, rule, today):
         behind = (today - day).days
         jumps = (behind // fixed_step) + 1 if behind >= 0 else 1
         return day + timedelta(days=jumps * fixed_step)
-    while day <= today:
+    if rule not in ("monthly", "weekdays"):
+        return today
+    # always at least one step: a chore done before its date still moves on
+    while True:
         if rule == "monthly":
             day = _add_month(day)
-        elif rule == "weekdays":
+        else:
             day += timedelta(days=1)
             while day.weekday() >= 5:
                 day += timedelta(days=1)
-        else:
-            return today
-    return day
+        if day > today:
+            return day
 
 
 # ---------- writes ----------
@@ -245,13 +262,21 @@ def undo(log_id):
                (entry["prev_due"], entry["task_id"]))
 
 
+def _valid_rule(rule):
+    """One of the fixed cadences, or a custom "every:N" days from quick-add."""
+    if rule in REPEAT_OPTIONS:
+        return rule
+    match = re.fullmatch(r"every:(\d{1,4})", rule or "")
+    return rule if match and int(match.group(1)) > 0 else ""
+
+
 def update(task_id, title, assignee, due, priority, repeat_rule):
     db.execute(
         "UPDATE tasks SET title = ?, assignee = ?, due = ?, priority = ?,"
         " repeat_rule = ? WHERE id = ?",
         (title.strip(), assignee.strip().title(), due or None,
          priority if priority in PRIORITIES else "normal",
-         repeat_rule if repeat_rule in REPEAT_OPTIONS else "", task_id))
+         _valid_rule(repeat_rule), task_id))
 
 
 def delete(task_id):
