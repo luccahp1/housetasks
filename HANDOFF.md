@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-10-15_
+_Last updated: 2026-11-12_
 
 ## What this is
 
@@ -28,6 +28,7 @@ use only.
 
 - 44 tests pass (parser, recurrence, writes, buckets, people, streak).
 - Not deployed anywhere.
+- 2026-11-12: removed `clear_done` and `due_today_count` (unused here and in HomeDash; both copies of `app/tasks.py` still match).
 - 2026-10-15: picked up the fixes made in HomeDash the same day. Editing an
   "every N days" chore no longer drops its repeat, a monthly or weekdays chore
   ticked before its date moves on, "feb 29" typed after a leap February no longer

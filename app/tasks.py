@@ -283,10 +283,6 @@ def delete(task_id):
     db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
 
 
-def clear_done():
-    db.execute("DELETE FROM tasks WHERE done = 1")
-
-
 # ---------- read models ----------
 
 def initials(name):
@@ -414,9 +410,3 @@ def summary(person=""):
             "today_total": total, "week_done": week_done, "streak": _streak(),
             "pct": round(finished / total * 100) if total else 100}
 
-
-def due_today_count():
-    """Open tasks that are due now or already late — the number for the tile."""
-    return db.query_one(
-        "SELECT COUNT(*) AS c FROM tasks WHERE done = 0 AND due IS NOT NULL"
-        " AND due <= ?", (date.today().isoformat(),))["c"]
