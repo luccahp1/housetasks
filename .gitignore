@@ -13,6 +13,3 @@ venv/
 .idea/
 .vscode/
 
-# local project memory, stays off the public repo
-.assistant/
-CLAUDE.md
